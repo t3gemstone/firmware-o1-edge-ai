@@ -1,0 +1,7 @@
+# Symlinks created under /lib/firmware, one per line: <target> <link>
+vision_apps_eaik/vx_app_rtos_linux_c7x_1.out           j722s-c71_0-fw
+vision_apps_eaik/vx_app_rtos_linux_c7x_1.out.signed    j722s-c71_0-fw-sec
+vision_apps_eaik/vx_app_rtos_linux_c7x_2.out           j722s-c71_1-fw
+vision_apps_eaik/vx_app_rtos_linux_c7x_2.out.signed    j722s-c71_1-fw-sec
+vision_apps_eaik/vx_app_rtos_linux_mcu2_0.out          j722s-main-r5f0_0-fw
+vision_apps_eaik/vx_app_rtos_linux_mcu2_0.out.signed   j722s-main-r5f0_0-fw-sec

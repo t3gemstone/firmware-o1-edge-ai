@@ -1,0 +1,59 @@
+name: Build Debian Package
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build package
+        run: |
+          # A tag such as v11.0.1 builds version 11.0.1; any other ref builds
+          # the default version from Taskfile.yml.
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            task build PKG_VERSION="${GITHUB_REF_NAME#v}"
+          else
+            task build
+          fi
+          cd build && sha256sum -- *.deb > SHA256SUMS && cat SHA256SUMS
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: t3-edgeai-firmware
+          path: |
+            build/*.deb
+            build/SHA256SUMS
+          if-no-files-found: error
+
+      - name: Publish release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" build/*.deb build/SHA256SUMS --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" build/*.deb build/SHA256SUMS \
+              --title "t3-edgeai-firmware ${GITHUB_REF_NAME#v}" \
+              --generate-notes
+          fi

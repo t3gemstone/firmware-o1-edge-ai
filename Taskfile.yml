@@ -1,0 +1,95 @@
+# T3 Foundation Gemstone Project [t3gemstone.org]
+# SPDX-License-Identifier: Apache-2.0
+
+version: '3'
+
+vars:
+  PKG_NAME: 't3-edgeai-firmware'
+  PKG_VERSION: '{{ .PKG_VERSION | default "11.0.0" }}'
+  PKG_ARCH: '{{ .PKG_ARCH | default "arm64" }}'
+  FW_DIRS: 'cnm vision_apps_eaik'
+  BUILD_DIR: '{{ .ROOT_DIR }}/build'
+  STAGE_DIR: '{{ .BUILD_DIR }}/{{ .PKG_NAME }}_{{ .PKG_VERSION }}_{{ .PKG_ARCH }}'
+  DEB_FILE: '{{ .STAGE_DIR }}.deb'
+
+env:
+  # Clamp file timestamps to the last commit so that rebuilding the same
+  # commit produces a byte-identical package.
+  SOURCE_DATE_EPOCH:
+    sh: git log -1 --format=%ct 2>/dev/null || date +%s
+
+tasks:
+
+  default:
+    silent: true
+    cmds:
+      - task --list
+      - echo -e "\nEnvironment:\n"
+      - echo "  PKG_NAME     = '{{ .PKG_NAME }}'"
+      - echo "  PKG_VERSION  = '{{ .PKG_VERSION }}'"
+      - echo "  PKG_ARCH     = '{{ .PKG_ARCH }}'"
+      - echo "  DEB_FILE     = '{{ .DEB_FILE }}'"
+      - echo ""
+
+  stage:
+    desc: Prepare the package root under build/
+    preconditions:
+      - sh: echo "{{ .PKG_VERSION }}" | grep -Eq '^[0-9][A-Za-z0-9.+~-]*$'
+        msg: "Invalid Debian version: '{{ .PKG_VERSION }}'"
+    cmds:
+      - rm -rf "{{ .STAGE_DIR }}"
+      - mkdir -p "{{ .STAGE_DIR }}/DEBIAN" "{{ .STAGE_DIR }}/lib/firmware"
+      - cp -r {{ .FW_DIRS }} "{{ .STAGE_DIR }}/lib/firmware/"
+      - |
+        while read -r target link; do
+          case "$target" in ''|\#*) continue ;; esac
+          ln -sfn "$target" "{{ .STAGE_DIR }}/lib/firmware/$link"
+        done < packaging/links
+      - sed -e "s/@PACKAGE@/{{ .PKG_NAME }}/"
+            -e "s/@VERSION@/{{ .PKG_VERSION }}/"
+            -e "s/@ARCH@/{{ .PKG_ARCH }}/"
+            packaging/control.in > "{{ .STAGE_DIR }}/DEBIAN/control"
+      - find "{{ .STAGE_DIR }}" -type d -exec chmod 0755 {} +
+      - find "{{ .STAGE_DIR }}" -type f -exec chmod 0644 {} +
+
+  build:
+    desc: Build the .deb package into build/
+    preconditions:
+      - sh: command -v dpkg-deb
+        msg: "dpkg-deb not found, install the 'dpkg' package"
+    cmds:
+      - task: stage
+      # xz instead of Ubuntu's zstd default, so that older dpkg and
+      # repository tools can also read the package.
+      - dpkg-deb --root-owner-group -Zxz --build "{{ .STAGE_DIR }}" "{{ .DEB_FILE }}"
+      - task: check
+
+  check:
+    desc: Verify that the built package contains every firmware file and symlink
+    preconditions:
+      - sh: test -f "{{ .DEB_FILE }}"
+        msg: "{{ .DEB_FILE }} not found, run 'task build' first"
+    cmds:
+      - dpkg-deb --info "{{ .DEB_FILE }}"
+      - dpkg-deb --contents "{{ .DEB_FILE }}"
+      - |
+        set -e
+        dpkg-deb --contents "{{ .DEB_FILE }}" > "{{ .BUILD_DIR }}/contents.txt"
+        for f in $(find {{ .FW_DIRS }} -type f | sort); do
+          grep -q " \./lib/firmware/$f\$" "{{ .BUILD_DIR }}/contents.txt" \
+            || { echo "missing file: $f"; exit 1; }
+        done
+        while read -r target link; do
+          case "$target" in ''|\#*) continue ;; esac
+          grep -q " \./lib/firmware/$link -> $target\$" "{{ .BUILD_DIR }}/contents.txt" \
+            || { echo "missing symlink: $link -> $target"; exit 1; }
+          grep -q " \./lib/firmware/$target\$" "{{ .BUILD_DIR }}/contents.txt" \
+            || { echo "dangling symlink: $link -> $target"; exit 1; }
+        done < packaging/links
+        rm -f "{{ .BUILD_DIR }}/contents.txt"
+        echo "OK: {{ .DEB_FILE }}"
+
+  clean:
+    desc: Remove the build directory
+    cmds:
+      - rm -rf "{{ .BUILD_DIR }}"
