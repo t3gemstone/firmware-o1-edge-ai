@@ -1,0 +1,46 @@
+#!/bin/sh
+# T3 Foundation Gemstone Project [t3gemstone.org]
+# SPDX-License-Identifier: Apache-2.0
+
+set -e
+
+UENV_FILE=/boot/uEnv.txt
+OVERLAY=k3-am67a-t3-gem-o1-edgeai-apps.dtbo
+
+# Act on a fresh install or an upgrade only.
+if [ "$1" != configure ]; then
+    exit 0
+fi
+
+if [ ! -f "$UENV_FILE" ]; then
+    echo "WARNING: $UENV_FILE not found, Edge AI overlay not enabled." >&2
+    echo "         Append $OVERLAY to the overlays= line manually." >&2
+    exit 0
+fi
+
+# U-Boot applies the last definition of a variable, so only the last
+# overlays= line matters. Compare its value word by word so that the entry
+# is never duplicated when the package is reinstalled or upgraded.
+value=$(sed -n 's/^overlays=//p' "$UENV_FILE" | tail -n 1 | tr '\t' ' ')
+case " $value " in
+    *" $OVERLAY "*)
+        echo "$UENV_FILE: $OVERLAY is already in the overlays= line."
+        exit 0
+        ;;
+esac
+
+line=$(grep -n '^overlays=' "$UENV_FILE" | tail -n 1 | cut -d: -f1)
+if [ -n "$line" ]; then
+    # Append the overlay to the end of the line, separated by a space
+    # (any trailing whitespace on the line is swallowed).
+    sed -i "${line}s/[[:space:]]*\$/ $OVERLAY/" "$UENV_FILE"
+else
+    # No overlays= line yet, add one to the end of the file.
+    if [ -n "$(tail -c 1 "$UENV_FILE")" ]; then
+        echo >> "$UENV_FILE"
+    fi
+    echo "overlays=$OVERLAY" >> "$UENV_FILE"
+fi
+
+echo "$UENV_FILE: added $OVERLAY to the overlays= line."
+echo "A reboot is required to apply the overlay and load the new firmware."

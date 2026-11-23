@@ -9,4 +9,7 @@ Description: Edge AI remote core firmware for J722S based T3 Gemstone boards
  the main R5F core (j722s-main-r5f0_0), plus the Chips&Media Wave521c video
  codec firmware. Built with TI Processor SDK RTOS J722S 11.00.00.06.
  .
- A reboot is required for the remote cores to load the new firmware.
+ On installation, the k3-am67a-t3-gem-o1-edgeai-apps.dtbo overlay is
+ appended to the overlays= line of /boot/uEnv.txt.
+ A reboot is required for the remote cores to load the new firmware and
+ for the overlay to be applied.

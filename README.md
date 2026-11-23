@@ -19,6 +19,11 @@ The firmware is distributed as the `t3-edgeai-firmware` Debian package, which in
 `/lib/firmware` together with the `j722s-*-fw` symlinks that the remoteproc driver loads.
 The symlinks are listed in `packaging/links` and the package metadata is in `packaging/control.in`.
 
+During installation the `postinst` maintainer script also appends
+`k3-am67a-t3-gem-o1-edgeai-apps.dtbo` to the `overlays=` line of `/boot/uEnv.txt`, so that the
+Edge AI device tree overlay is loaded at boot. The edit is idempotent: reinstalling or upgrading
+the package never duplicates the entry, and if the entry is already there it is left untouched.
+
 #### 1. Install Task on the host computer.
 
 ```bash
@@ -33,7 +38,7 @@ The symlinks are listed in `packaging/links` and the package metadata is in `pac
 
 The package is written to `build/t3-edgeai-firmware_11.0.0_arm64.deb`. To build another version, run `task build PKG_VERSION=11.0.1`.
 
-#### 3. Install the package on the board and reboot so that the remote cores load the new firmware.
+#### 3. Install the package on the board and reboot so that the Edge AI overlay is applied and the remote cores load the new firmware.
 
 ```bash
  sudo apt install ./t3-edgeai-firmware_11.0.0_arm64.deb

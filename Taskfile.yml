@@ -49,8 +49,12 @@ tasks:
             -e "s/@VERSION@/{{ .PKG_VERSION }}/"
             -e "s/@ARCH@/{{ .PKG_ARCH }}/"
             packaging/control.in > "{{ .STAGE_DIR }}/DEBIAN/control"
+      - cp packaging/postinst "{{ .STAGE_DIR }}/DEBIAN/postinst"
       - find "{{ .STAGE_DIR }}" -type d -exec chmod 0755 {} +
       - find "{{ .STAGE_DIR }}" -type f -exec chmod 0644 {} +
+      # dpkg runs maintainer scripts directly, so postinst must stay
+      # executable; the generic chmod above would otherwise flatten it.
+      - chmod 0755 "{{ .STAGE_DIR }}/DEBIAN/postinst"
 
   build:
     desc: Build the .deb package into build/
@@ -65,7 +69,7 @@ tasks:
       - task: check
 
   check:
-    desc: Verify that the built package contains every firmware file and symlink
+    desc: Verify that the built package contains every firmware file, symlink and maintainer script
     preconditions:
       - sh: test -f "{{ .DEB_FILE }}"
         msg: "{{ .DEB_FILE }} not found, run 'task build' first"
@@ -86,6 +90,11 @@ tasks:
           grep -q " \./lib/firmware/$target\$" "{{ .BUILD_DIR }}/contents.txt" \
             || { echo "dangling symlink: $link -> $target"; exit 1; }
         done < packaging/links
+        mkdir -p "{{ .BUILD_DIR }}/control"
+        dpkg-deb --control "{{ .DEB_FILE }}" "{{ .BUILD_DIR }}/control"
+        test -x "{{ .BUILD_DIR }}/control/postinst" \
+          || { echo "missing or non-executable script: DEBIAN/postinst"; exit 1; }
+        rm -rf "{{ .BUILD_DIR }}/control"
         rm -f "{{ .BUILD_DIR }}/contents.txt"
         echo "OK: {{ .DEB_FILE }}"
 
