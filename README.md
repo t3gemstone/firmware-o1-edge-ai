@@ -48,4 +48,7 @@ The package is written to `build/t3-edgeai-firmware_11.0.0_arm64.deb`. To build 
 ### Releases
 
 The [Build Debian Package](.github/workflows/build-deb.yml) workflow builds the package on every push and pull request and uploads it as a workflow artifact.
-Pushing a tag such as `v11.0.1` builds version `11.0.1` and attaches the package and its `SHA256SUMS` to a GitHub release.
+The version always comes from `PKG_VERSION` in `Taskfile.yml`.
+When a push to `main` carries a version that has not been released yet, the workflow tags that commit as `v<version>` and publishes the package and its `SHA256SUMS` as a GitHub release.
+A published release is never overwritten: later pushes with the same version leave it untouched, so bump `PKG_VERSION` to publish a new release.
+A tag such as `v11.0.1` can also be pushed by hand; it must match `PKG_VERSION` in the tagged commit, otherwise the build fails.

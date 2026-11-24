@@ -98,6 +98,12 @@ tasks:
         rm -f "{{ .BUILD_DIR }}/contents.txt"
         echo "OK: {{ .DEB_FILE }}"
 
+  version:
+    desc: Print the package version
+    silent: true
+    cmds:
+      - echo "{{ .PKG_VERSION }}"
+
   clean:
     desc: Remove the build directory
     cmds:

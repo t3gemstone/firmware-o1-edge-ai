@@ -7,6 +7,14 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Runs that may publish (main and tags) share one group, so they never
+# overlap: two quick pushes cannot publish out of order, and a tag push and
+# a main push of the same commit cannot both create the release. A pull
+# request run is cancelled when a newer push to the same pull request lands.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || 'publish' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -25,15 +33,24 @@ jobs:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Determine package version
+        run: |
+          # PKG_VERSION in Taskfile.yml is the only source of the version; a
+          # pushed tag must name that same version.
+          version="$(task version)"
+          if [[ ! "$version" =~ ^[0-9][A-Za-z0-9.+~-]*$ ]]; then
+            echo "::error::Invalid package version: '$version'"
+            exit 1
+          fi
+          if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match PKG_VERSION $version in Taskfile.yml"
+            exit 1
+          fi
+          echo "PKG_VERSION=$version" >> "$GITHUB_ENV"
+
       - name: Build package
         run: |
-          # A tag such as v11.0.1 builds version 11.0.1; any other ref builds
-          # the default version from Taskfile.yml.
-          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
-            task build PKG_VERSION="${GITHUB_REF_NAME#v}"
-          else
-            task build
-          fi
+          task build
           cd build && sha256sum -- *.deb > SHA256SUMS && cat SHA256SUMS
 
       - name: Upload package
@@ -45,15 +62,38 @@ jobs:
             build/SHA256SUMS
           if-no-files-found: error
 
+      # Publishing is keyed on the v<version> tag, so that a release only
+      # ever holds the package built from the commit its tag points to:
+      # - no tag yet: create the release, tagging this commit;
+      # - tag on this commit (a tag push, or a re-run): create the release,
+      #   or re-upload its assets, which are byte-identical rebuilds;
+      # - tag on another commit: this version is already released, so leave
+      #   it alone. Bump PKG_VERSION in Taskfile.yml to publish a new one.
       - name: Publish release
-        if: github.ref_type == 'tag'
+        if: github.ref == 'refs/heads/main' || github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" build/*.deb build/SHA256SUMS --clobber
+          tag="v$PKG_VERSION"
+          # The commit the tag points to; for an annotated tag, ls-remote
+          # lists the peeled commit (tag^{}) right after the tag object.
+          tag_commit="$(git ls-remote --tags origin \
+            | awk -v ref="refs/tags/$tag" '$2 == ref || $2 == ref "^{}" { sha = $1 } END { print sha }')"
+
+          if [[ -n "$tag_commit" && "$tag_commit" != "$GITHUB_SHA" ]]; then
+            if gh release view "$tag" >/dev/null 2>&1; then
+              echo "::notice::$tag is already released from ${tag_commit:0:7}; bump PKG_VERSION in Taskfile.yml to publish a new release."
+            else
+              echo "::warning::Tag $tag points to ${tag_commit:0:7} but has no release; re-run the workflow for that tag."
+            fi
+            exit 0
+          fi
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" build/*.deb build/SHA256SUMS --clobber
           else
-            gh release create "$GITHUB_REF_NAME" build/*.deb build/SHA256SUMS \
-              --title "t3-edgeai-firmware ${GITHUB_REF_NAME#v}" \
+            gh release create "$tag" build/*.deb build/SHA256SUMS \
+              --target "$GITHUB_SHA" \
+              --title "t3-edgeai-firmware $PKG_VERSION" \
               --generate-notes
           fi
