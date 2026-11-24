@@ -1,0 +1,33 @@
+#!/bin/sh
+# T3 Foundation Gemstone Project [t3gemstone.org]
+# SPDX-License-Identifier: Apache-2.0
+
+set -e
+
+PKG=t3-edgeai-firmware
+
+# Every file and symlink this package installs, filled in at build time.
+FW_FILES="
+@FW_FILES@
+"
+
+if [ "$1" != install ] && [ "$1" != upgrade ]; then
+    exit 0
+fi
+
+# The board image ships its own remote core firmware under some of these
+# names (j722s-c71_0-fw and so on), outside of any package, which dpkg would
+# silently overwrite and later delete. Divert every path before unpacking:
+# an existing file is moved aside to <path>.distrib, and postrm puts it back
+# when the package is removed. A path that an older version of this package
+# installed without a diversion holds no original to keep, so it is diverted
+# without moving it.
+owned=$(dpkg-query -L "$PKG" 2>/dev/null || true)
+for file in $FW_FILES; do
+    if printf '%s\n' "$owned" | grep -qxF "$file"; then
+        rename=--no-rename
+    else
+        rename=--rename
+    fi
+    dpkg-divert --package "$PKG" --divert "$file.distrib" $rename --quiet --add "$file"
+done

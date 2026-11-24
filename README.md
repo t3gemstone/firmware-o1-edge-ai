@@ -23,6 +23,17 @@ During installation the `postinst` maintainer script also appends
 `k3-am67a-t3-gem-o1-edgeai-apps.dtbo` to the `overlays=` line of `/boot/uEnv.txt`, so that the
 Edge AI device tree overlay is loaded at boot. The edit is idempotent: reinstalling or upgrading
 the package never duplicates the entry, and if the entry is already there it is left untouched.
+The overlay file itself is not part of this package; if it is not found under `/boot`, `uEnv.txt`
+is left as it is and a warning is printed. Once the overlay is installed, run
+`sudo dpkg-reconfigure t3-edgeai-firmware` to enable it.
+Removing the package takes the overlay out of `/boot/uEnv.txt` again through the `postrm` script,
+since without the firmware the remote cores cannot start.
+
+The board image already ships its own firmware as `/lib/firmware/j722s-c71_0-fw` and so on, outside
+of any package. So that it is not lost, the `preinst` script registers a `dpkg-divert` diversion for
+every file the package installs: a file that is already there is moved aside to `<path>.distrib`
+during installation, and `postrm` moves it back when the package is removed. `dpkg-divert --list`
+shows the diversions.
 
 #### 1. Install Task on the host computer.
 

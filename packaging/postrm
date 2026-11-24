@@ -1,0 +1,77 @@
+#!/bin/sh
+# T3 Foundation Gemstone Project [t3gemstone.org]
+# SPDX-License-Identifier: Apache-2.0
+
+set -e
+
+PKG=t3-edgeai-firmware
+UENV_FILE=$DPKG_ROOT/boot/uEnv.txt
+OVERLAY=k3-am67a-t3-gem-o1-edgeai-apps.dtbo
+
+# Every file and symlink this package installs, filled in at build time.
+FW_FILES="
+@FW_FILES@
+"
+
+# Without the firmware the overlay would only leave the remote cores failing
+# to start, so drop it from every overlays= line, together with any entry
+# that has a directory prefix (dir/$OVERLAY). Other lines are kept as is.
+remove_overlay() {
+    if [ ! -f "$UENV_FILE" ]; then
+        return 0
+    fi
+
+    tmp=$(mktemp "$UENV_FILE.XXXXXX")
+    trap 'rm -f "$tmp"' EXIT
+
+    awk -v ov="$OVERLAY" '
+        function is_overlay(w) {
+            return w == ov || substr(w, length(w) - length(ov)) == "/" ov
+        }
+        /^overlays=/ {
+            cr = sub(/\r$/, "")
+            n = split(substr($0, length("overlays=") + 1), words, /[ \t]+/)
+            kept = ""
+            found = 0
+            for (i = 1; i <= n; i++) {
+                if (words[i] == "")
+                    continue
+                if (is_overlay(words[i]))
+                    found = 1
+                else
+                    kept = kept (kept == "" ? "" : " ") words[i]
+            }
+            if (found)
+                $0 = "overlays=" kept
+            if (cr)
+                $0 = $0 "\r"
+        }
+        { print }
+    ' "$UENV_FILE" > "$tmp"
+
+    if ! cmp -s "$tmp" "$UENV_FILE"; then
+        # Write in place so that the file keeps its owner and mode.
+        cat "$tmp" > "$UENV_FILE"
+        echo "$UENV_FILE: removed $OVERLAY from the overlays= line."
+    fi
+}
+
+# Undo the diversions made by preinst, moving the files that were there
+# before the package was installed back into place.
+restore_firmware() {
+    for file in $FW_FILES; do
+        dpkg-divert --package "$PKG" --divert "$file.distrib" --rename --quiet --remove "$file"
+    done
+}
+
+# An upgrade keeps both the overlay and the diversions, and purge runs after
+# remove, which has already undone them.
+case "$1" in
+    remove)
+        remove_overlay
+        restore_firmware
+        ;;
+    abort-install)
+        restore_firmware
+        ;;
+esac

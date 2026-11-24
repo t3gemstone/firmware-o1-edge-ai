@@ -8,6 +8,7 @@ vars:
   PKG_VERSION: '{{ .PKG_VERSION | default "11.0.0" }}'
   PKG_ARCH: '{{ .PKG_ARCH | default "arm64" }}'
   FW_DIRS: 'cnm vision_apps_eaik'
+  MAINT_SCRIPTS: 'preinst postinst postrm'
   BUILD_DIR: '{{ .ROOT_DIR }}/build'
   STAGE_DIR: '{{ .BUILD_DIR }}/{{ .PKG_NAME }}_{{ .PKG_VERSION }}_{{ .PKG_ARCH }}'
   DEB_FILE: '{{ .STAGE_DIR }}.deb'
@@ -49,12 +50,21 @@ tasks:
             -e "s/@VERSION@/{{ .PKG_VERSION }}/"
             -e "s/@ARCH@/{{ .PKG_ARCH }}/"
             packaging/control.in > "{{ .STAGE_DIR }}/DEBIAN/control"
-      - cp packaging/postinst "{{ .STAGE_DIR }}/DEBIAN/postinst"
+      # Fill @FW_FILES@ in the maintainer scripts with every file and symlink
+      # the package installs, one path per line, for preinst and postrm to
+      # divert and restore.
+      - (cd "{{ .STAGE_DIR }}" && find lib ! -type d | LC_ALL=C sort | sed 's|^|/|') > "{{ .BUILD_DIR }}/fw-files.txt"
+      - |
+        for script in {{ .MAINT_SCRIPTS }}; do
+          sed -e '/^@FW_FILES@$/{r {{ .BUILD_DIR }}/fw-files.txt' -e 'd}' \
+            "packaging/$script" > "{{ .STAGE_DIR }}/DEBIAN/$script"
+        done
+      - rm -f "{{ .BUILD_DIR }}/fw-files.txt"
       - find "{{ .STAGE_DIR }}" -type d -exec chmod 0755 {} +
       - find "{{ .STAGE_DIR }}" -type f -exec chmod 0644 {} +
-      # dpkg runs maintainer scripts directly, so postinst must stay
-      # executable; the generic chmod above would otherwise flatten it.
-      - chmod 0755 "{{ .STAGE_DIR }}/DEBIAN/postinst"
+      # dpkg runs maintainer scripts directly, so they must stay
+      # executable; the generic chmod above would otherwise flatten them.
+      - for script in {{ .MAINT_SCRIPTS }}; do chmod 0755 "{{ .STAGE_DIR }}/DEBIAN/$script"; done
 
   build:
     desc: Build the .deb package into build/
@@ -90,10 +100,17 @@ tasks:
           grep -q " \./lib/firmware/$target\$" "{{ .BUILD_DIR }}/contents.txt" \
             || { echo "dangling symlink: $link -> $target"; exit 1; }
         done < packaging/links
-        mkdir -p "{{ .BUILD_DIR }}/control"
+        # Start from an empty directory, so that scripts left over from an
+        # earlier, failed check cannot hide a missing one.
+        rm -rf "{{ .BUILD_DIR }}/control"
         dpkg-deb --control "{{ .DEB_FILE }}" "{{ .BUILD_DIR }}/control"
-        test -x "{{ .BUILD_DIR }}/control/postinst" \
-          || { echo "missing or non-executable script: DEBIAN/postinst"; exit 1; }
+        for script in {{ .MAINT_SCRIPTS }}; do
+          test -x "{{ .BUILD_DIR }}/control/$script" \
+            || { echo "missing or non-executable script: DEBIAN/$script"; exit 1; }
+          if grep -q '@FW_FILES@' "{{ .BUILD_DIR }}/control/$script"; then
+            echo "unfilled @FW_FILES@ in DEBIAN/$script"; exit 1
+          fi
+        done
         rm -rf "{{ .BUILD_DIR }}/control"
         rm -f "{{ .BUILD_DIR }}/contents.txt"
         echo "OK: {{ .DEB_FILE }}"

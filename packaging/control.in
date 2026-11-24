@@ -10,6 +10,12 @@ Description: Edge AI remote core firmware for J722S based T3 Gemstone boards
  codec firmware. Built with TI Processor SDK RTOS J722S 11.00.00.06.
  .
  On installation, the k3-am67a-t3-gem-o1-edgeai-apps.dtbo overlay is
- appended to the overlays= line of /boot/uEnv.txt.
+ appended to the overlays= line of /boot/uEnv.txt if the overlay file is
+ found under /boot. Removing the package takes it out again.
+ .
+ Firmware files that already exist at the same paths, such as the ones
+ shipped with the board image, are diverted to <path>.distrib and restored
+ when the package is removed.
+ .
  A reboot is required for the remote cores to load the new firmware and
  for the overlay to be applied.

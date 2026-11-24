@@ -4,10 +4,11 @@
 
 set -e
 
-UENV_FILE=/boot/uEnv.txt
+BOOT_DIR=$DPKG_ROOT/boot
+UENV_FILE=$BOOT_DIR/uEnv.txt
 OVERLAY=k3-am67a-t3-gem-o1-edgeai-apps.dtbo
 
-# Act on a fresh install or an upgrade only.
+# Act on a fresh install, an upgrade or dpkg-reconfigure only.
 if [ "$1" != configure ]; then
     exit 0
 fi
@@ -20,20 +21,33 @@ fi
 
 # U-Boot applies the last definition of a variable, so only the last
 # overlays= line matters. Compare its value word by word so that the entry
-# is never duplicated when the package is reinstalled or upgraded.
-value=$(sed -n 's/^overlays=//p' "$UENV_FILE" | tail -n 1 | tr '\t' ' ')
+# is never duplicated when the package is reinstalled or upgraded; an entry
+# with a directory prefix (dir/$OVERLAY) counts as present too.
+value=$(sed -n 's/^overlays=//p' "$UENV_FILE" | tail -n 1 | tr '\t\r' '  ')
 case " $value " in
-    *" $OVERLAY "*)
+    *" $OVERLAY "*|*"/$OVERLAY "*)
         echo "$UENV_FILE: $OVERLAY is already in the overlays= line."
         exit 0
         ;;
 esac
 
+# The overlay file is not part of this package. U-Boot cannot apply an
+# overlay that is missing from the boot files, so only enable it once it
+# is there.
+if [ -z "$(find "$BOOT_DIR" -name "$OVERLAY" -print -quit 2>/dev/null)" ]; then
+    echo "WARNING: $OVERLAY not found under $BOOT_DIR, Edge AI overlay not enabled." >&2
+    echo "         Once it is installed, run 'sudo dpkg-reconfigure t3-edgeai-firmware'" >&2
+    echo "         or append it to the overlays= line of $UENV_FILE manually." >&2
+    exit 0
+fi
+
 line=$(grep -n '^overlays=' "$UENV_FILE" | tail -n 1 | cut -d: -f1)
 if [ -n "$line" ]; then
-    # Append the overlay to the end of the line, separated by a space
-    # (any trailing whitespace on the line is swallowed).
-    sed -i "${line}s/[[:space:]]*\$/ $OVERLAY/" "$UENV_FILE"
+    # Append the overlay to the end of the line, separated by a space. Any
+    # trailing whitespace is swallowed, and an empty value gets no leading
+    # space.
+    sed -i -e "${line}s/[[:space:]]*\$/ $OVERLAY/" \
+           -e "${line}s/^overlays=[[:space:]]*/overlays=/" "$UENV_FILE"
 else
     # No overlays= line yet, add one to the end of the file.
     if [ -n "$(tail -c 1 "$UENV_FILE")" ]; then
