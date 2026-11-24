@@ -46,9 +46,17 @@ tasks:
           case "$target" in ''|\#*) continue ;; esac
           ln -sfn "$target" "{{ .STAGE_DIR }}/lib/firmware/$link"
         done < packaging/links
-      - sed -e "s/@PACKAGE@/{{ .PKG_NAME }}/"
-            -e "s/@VERSION@/{{ .PKG_VERSION }}/"
-            -e "s/@ARCH@/{{ .PKG_ARCH }}/"
+      # Installed-Size lets apt check the free disk space before installing.
+      # It is in KiB, each file rounded up as dpkg-gencontrol does, and is
+      # computed from file sizes only, so that it is the same on every
+      # filesystem and the package stays reproducible.
+      - |
+        size=$(cd "{{ .STAGE_DIR }}" && find lib -type f -printf '%s\n' \
+          | awk '{ kib += int(($1 + 1023) / 1024) } END { print kib + 0 }')
+        sed -e "s/@PACKAGE@/{{ .PKG_NAME }}/" \
+            -e "s/@VERSION@/{{ .PKG_VERSION }}/" \
+            -e "s/@ARCH@/{{ .PKG_ARCH }}/" \
+            -e "s/@INSTALLED_SIZE@/$size/" \
             packaging/control.in > "{{ .STAGE_DIR }}/DEBIAN/control"
       # Fill @FW_FILES@ in the maintainer scripts with every file and symlink
       # the package installs, one path per line, for preinst and postrm to

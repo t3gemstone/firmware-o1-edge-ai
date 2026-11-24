@@ -3,6 +3,7 @@ Version: @VERSION@
 Section: kernel
 Priority: optional
 Architecture: @ARCH@
+Installed-Size: @INSTALLED_SIZE@
 Maintainer: T3 Gemstone Project Development Team <support@t3gemstone.org>
 Description: Edge AI remote core firmware for J722S based T3 Gemstone boards
  Vision apps firmware for the C7x DSP cores (j722s-c71_0, j722s-c71_1) and
