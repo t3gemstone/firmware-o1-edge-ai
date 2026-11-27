@@ -5,9 +5,9 @@ version: '3'
 
 vars:
   PKG_NAME: 't3-edgeai-firmware'
-  PKG_VERSION: '{{ .PKG_VERSION | default "11.0.0" }}'
+  PKG_VERSION: '{{ .PKG_VERSION | default "11.0.1" }}'
   PKG_ARCH: '{{ .PKG_ARCH | default "arm64" }}'
-  FW_DIRS: 'cnm vision_apps_eaik'
+  FW_DIRS: 'vision_apps_eaik'
   MAINT_SCRIPTS: 'preinst postinst postrm'
   BUILD_DIR: '{{ .ROOT_DIR }}/build'
   STAGE_DIR: '{{ .BUILD_DIR }}/{{ .PKG_NAME }}_{{ .PKG_VERSION }}_{{ .PKG_ARCH }}'

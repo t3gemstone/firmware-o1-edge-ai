@@ -4,14 +4,32 @@
 
 set -e
 
+PKG=t3-edgeai-firmware
 BOOT_DIR=$DPKG_ROOT/boot
 UENV_FILE=$BOOT_DIR/uEnv.txt
 OVERLAY=k3-am67a-t3-gem-o1-edgeai-apps.dtbo
+
+# Files that an older version of this package installed and diverted, but
+# that this version no longer ships. 11.0.0 shipped the Wave521c codec
+# firmware, which the board image already provides.
+OBSOLETE_FILES="
+/lib/firmware/cnm/wave521c_k3_codec_fw.bin
+"
 
 # Act on a fresh install, an upgrade or dpkg-reconfigure only.
 if [ "$1" != configure ]; then
     exit 0
 fi
+
+# dpkg has removed the old version's copy of an obsolete file by now, so
+# dropping its diversion moves the image's own file back from
+# <path>.distrib. This runs before the overlay handling below, which can
+# exit early.
+for file in $OBSOLETE_FILES; do
+    if [ "$(dpkg-divert --listpackage "$file")" = "$PKG" ]; then
+        dpkg-divert --package "$PKG" --divert "$file.distrib" --rename --quiet --remove "$file"
+    fi
+done
 
 if [ ! -f "$UENV_FILE" ]; then
     echo "WARNING: $UENV_FILE not found, Edge AI overlay not enabled." >&2

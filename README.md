@@ -35,6 +35,10 @@ every file the package installs: a file that is already there is moved aside to 
 during installation, and `postrm` moves it back when the package is removed. `dpkg-divert --list`
 shows the diversions.
 
+The Wave521c video codec firmware (`/lib/firmware/cnm/wave521c_k3_codec_fw.bin`) is not part of the
+package, since the board image already provides it. Version 11.0.0 still shipped and diverted it;
+upgrading from 11.0.0 drops that diversion in `postinst`, which puts the image's copy back.
+
 #### 1. Install Task on the host computer.
 
 ```bash
@@ -47,12 +51,12 @@ shows the diversions.
  task build
 ```
 
-The package is written to `build/t3-edgeai-firmware_11.0.0_arm64.deb`. To build another version, run `task build PKG_VERSION=11.0.1`.
+The package is written to `build/t3-edgeai-firmware_11.0.1_arm64.deb`. To build another version, run `task build PKG_VERSION=11.0.2`.
 
 #### 3. Install the package on the board and reboot so that the Edge AI overlay is applied and the remote cores load the new firmware.
 
 ```bash
- sudo apt install ./t3-edgeai-firmware_11.0.0_arm64.deb
+ sudo apt install ./t3-edgeai-firmware_11.0.1_arm64.deb
  sudo reboot
 ```
 
